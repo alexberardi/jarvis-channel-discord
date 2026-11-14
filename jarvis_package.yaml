@@ -1,0 +1,35 @@
+name: "discord"
+display_name: "Discord"
+description: "Talk to Jarvis from Discord. Message your own bot in a direct message or in one channel of your server, send photos, use /jarvis commands, and get your reminders in your direct messages if you turn that on. Each person links their Discord account with a code from the Jarvis app; nobody else gets an answer."
+version: "0.1.0"
+# IJarvisDaemon is 0.17.0; the Channel helper this package talks through is 0.18.0.
+min_sdk_version: "0.18.0"
+license: Apache-2.0
+author:
+  github: "alexberardi"
+categories: ["communication"]
+platforms: ["darwin", "linux", "windows"]
+keywords: ["discord", "chat", "channel", "bot", "messages", "reminders"]
+
+components:
+  - type: daemon
+    name: discord
+    path: daemons/discord/daemon.py
+
+packages:
+  - name: discord.py
+    version: ">=2.4,<3"
+
+secrets:
+  - key: DISCORD_BOT_TOKEN
+    scope: integration
+    value_type: string
+    description: "Your Discord application's bot token"
+    friendly_name: "Bot token"
+  - key: DISCORD_CHANNEL_ID
+    scope: integration
+    value_type: string
+    description: "ID of the one server channel Jarvis answers in. Leave empty for direct messages only."
+    friendly_name: "Jarvis channel ID"
+    required: false
+    is_sensitive: false
