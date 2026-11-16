@@ -245,4 +245,8 @@ class DiscordChannel(IJarvisDaemon):
             raise RuntimeError("DISCORD_CHANNEL_ID is not a channel ID (digits only)")
         client = _Client(Bridge(Channel(PROVIDER), int(raw) if raw else None))
         async with client:
-            await client.start(token)
+            try:
+                await client.start(token)
+            except discord.PrivilegedIntentsRequired:
+                raise RuntimeError("Discord refused the connection: turn on Message Content Intent for the bot "
+                                   "(discord.com/developers/applications, Bot tab)") from None
