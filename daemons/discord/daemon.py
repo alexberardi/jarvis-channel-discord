@@ -27,6 +27,7 @@ from jarvis_command_sdk import (
     JarvisSecret,
     JarvisStorage,
     Outgoing,
+    clip_to_wav,
     split_reply,
 )
 
@@ -37,6 +38,7 @@ PROVIDER = "discord"
 MAX_REPLY = 1900  # Discord's limit is 2000 characters
 MAX_IMAGES = 4  # what one Jarvis chat turn takes
 MAX_IMAGE_BYTES = 10 << 20  # a message's photos together: the request to Jarvis is one line of at most 16 MiB, base64
+MAX_CLIP_BYTES = 8 << 20  # a voice clip as Discord stores it; Jarvis takes two minutes
 THREAD_NAME = 80
 SEEN, DONE, FAILED = "👀", "✅", "❌"
 ELSEWHERE = "I only work in direct messages and in the Jarvis channel."
@@ -87,7 +89,8 @@ class Bridge:
             text = re.sub(rf"<@!?{self.bot_id}>", "", text)
         text = text.strip()
         photos = [a for a in m.attachments if (a.content_type or "").startswith("image/")]
-        if not text and not photos:
+        clips = [a for a in m.attachments if (a.content_type or "").startswith("audio/")]
+        if not text and not photos and not clips:
             return
 
         uid = str(m.author.id)
@@ -95,10 +98,13 @@ class Bridge:
         if known:
             await _try(m.add_reaction(SEEN))
         images = await _read_images(photos)
-        if not text and not images:
+        audio = await _read_clip(clips)
+        if not text and not images and not audio:
+            if known:  # all they sent was something we couldn't read
+                await _try(m.add_reaction(FAILED))
             return
         async with m.channel.typing() if known else contextlib.nullcontext():
-            reply = await self.channel.message(uid, place, text, images)
+            reply = await self.channel.message(uid, place, text, images, audio)
         if reply is None:
             if known:
                 await _try(m.add_reaction(FAILED))
@@ -111,10 +117,12 @@ class Bridge:
         dest = m.channel
         if top:
             try:
-                dest = await m.create_thread(name=clip(text, THREAD_NAME) or "Jarvis")
+                dest = await m.create_thread(name=clip(text or reply.heard, THREAD_NAME) or "Jarvis")
             except discord.HTTPException as exc:
                 _log.warning("discord: could not start a thread, answering in the channel: %s", exc)
-        for part in split_reply(reply.say, MAX_REPLY):
+        # What Jarvis heard in a voice clip goes above its answer, so a mishearing shows.
+        say = f"> 🎤 {' '.join(reply.heard.split())}\n{reply.say}" if reply.heard else reply.say
+        for part in split_reply(say, MAX_REPLY):
             if part:
                 await dest.send(part)
         await _try(m.add_reaction(FAILED if reply.failed else DONE))
@@ -153,6 +161,19 @@ async def _read_images(attachments) -> list[ChannelImage]:
         total += len(data)
         out.append(ChannelImage(data, a.content_type.split(";")[0].strip()))
     return out
+
+
+async def _read_clip(attachments) -> bytes:
+    """The message's voice clip (its first) as the WAV Jarvis takes, or b"" without one."""
+    for a in attachments[:1]:
+        if a.size > MAX_CLIP_BYTES:
+            _log.warning("discord: a voice clip of %d bytes is too big", a.size)
+            break
+        try:
+            return await asyncio.to_thread(clip_to_wav, await a.read())
+        except (discord.HTTPException, ValueError) as exc:
+            _log.warning("discord: could not read a voice clip: %s", exc)
+    return b""
 
 
 def _commands(bridge: Bridge) -> app_commands.Group:
@@ -224,7 +245,7 @@ class DiscordChannel(IJarvisDaemon):
 
     @property
     def description(self) -> str:
-        return "Talk to Jarvis from Discord: direct messages, one channel, photos, commands and reminders"
+        return "Talk to Jarvis from Discord: direct messages, one channel, photos, voice clips, commands and reminders"
 
     @property
     def required_secrets(self) -> List[IJarvisSecret]:

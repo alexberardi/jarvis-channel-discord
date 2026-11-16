@@ -19,8 +19,9 @@ class FakeJarvis:
     def __init__(self, reply=ChannelReply(linked=True, say="hi")):
         self.reply, self.asked, self.commands = reply, [], []
 
-    async def message(self, uid, place, text="", images=()):
+    async def message(self, uid, place, text="", images=(), audio=b""):
         self.asked.append((uid, place, text, list(images)))
+        self.heard_audio = audio
         return self.reply
 
     async def command(self, uid, place, name, **args):
@@ -142,6 +143,25 @@ def test_photos_past_the_size_limit_are_left_out():
     big.size = MAX_IMAGE_BYTES
     got = run(_read_images([Photo(b"a"), big, Photo(b"c")]))
     assert [i.data for i in got] == [b"a", b"c"]
+
+
+def test_a_voice_clip_is_converted_and_what_jarvis_heard_goes_above_the_answer(monkeypatch):
+    monkeypatch.setattr("daemons.discord.daemon.clip_to_wav", lambda data: b"WAV:" + data)
+    jarvis = FakeJarvis(ChannelReply(linked=True, say="Yes, until six.", heard="is the café\nopen"))
+    m = Msg(text="", dm=True, attachments=[Photo(b"opus", "audio/ogg")])
+    asyncio.run(Bridge(jarvis).on_message(m))
+    assert jarvis.heard_audio == b"WAV:opus"
+    assert m.channel.sent == ["> 🎤 is the café open\nYes, until six."]
+
+
+def test_a_clip_that_cannot_be_read_is_not_sent_to_jarvis(monkeypatch):
+    def refuse(data):
+        raise ValueError("not a voice clip")
+
+    monkeypatch.setattr("daemons.discord.daemon.clip_to_wav", refuse)
+    jarvis = FakeJarvis()
+    asyncio.run(Bridge(jarvis).on_message(Msg(text="", dm=True, attachments=[Photo(b"x", "audio/ogg")])))
+    assert jarvis.asked == []
 
 
 def test_a_failed_turn_says_why_and_jarvis_out_of_reach_says_nothing():
