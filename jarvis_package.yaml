@@ -1,9 +1,9 @@
 name: "discord"
 display_name: "Discord"
-description: "Talk to Jarvis from Discord. Message your own bot in a direct message or in one channel of your server, send photos, use /jarvis commands, and get your reminders in your direct messages if you turn that on. Each person links their Discord account with a code from the Jarvis app; nobody else gets an answer."
-version: "0.1.0"
-# IJarvisDaemon is 0.17.0; the Channel helper this package talks through is 0.18.0.
-min_sdk_version: "0.18.0"
+description: "Talk to Jarvis from Discord. Message your own bot in a direct message or in one channel of your server, send photos and voice clips, use /jarvis commands, and get your reminders in your direct messages if you turn that on. Each person links their Discord account with a code from the Jarvis app; nobody else gets an answer."
+version: "0.2.0"
+# IJarvisDaemon is 0.17.0, the Channel helper 0.18.0, voice clips 0.19.0.
+min_sdk_version: "0.19.0"
 license: Apache-2.0
 author:
   github: "alexberardi"
@@ -19,6 +19,9 @@ components:
 packages:
   - name: discord.py
     version: ">=2.4,<3"
+  # Voice clips: the SDK's clip_to_wav converts what Discord records with it.
+  - name: av
+    version: ">=14,<20"
 
 secrets:
   - key: DISCORD_BOT_TOKEN
